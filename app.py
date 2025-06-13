@@ -4,6 +4,7 @@ from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from pymongo.mongo_client import MongoClient
 from langchain_community.utils.math import cosine_similarity
 from langchain_core.prompts import ChatPromptTemplate
+from langchain.output_parsers import PydanticOutputParser
 from enum import Enum
 from pydantic import BaseModel, Field
 import os
@@ -62,7 +63,7 @@ class RelatedNot(BaseModel):
 def whatsapp():
     incoming_msg = request.values.get("Body", "").strip()
     user_number = request.values.get("From", "")
-    print(f"📩 Received message from {user_number}: {incoming_msg}")
+
     if user_number not in user_sessions:
         user_sessions[user_number] = []
     chat_history = user_sessions[user_number]
@@ -76,13 +77,15 @@ Chat history: {chat_history}
 Latest input: {incoming_msg}
 """
     modified_input = larger_llm.invoke(standalone_prompt).content
-    modified_input = str(modified_input)  # ✅ type-safe conversion
+    modified_input = str(modified_input)
 
     # 2. Classify: Subject-Specific or Casual
     tag_input = tagging_prompt.invoke({"input": modified_input})
-    category_obj = smaller_llm.with_structured_output(CasualSubject).invoke(tag_input)
-    category = category_obj["description"]  # ✅ this works!
+    tag_response = smaller_llm.invoke(tag_input).content
+    tag_text = tag_response if isinstance(tag_response, str) else str(tag_response)
 
+    category_obj = PydanticOutputParser(pydantic_object=CasualSubject).parse(tag_text)
+    category = category_obj.description.value  # ✅ use .value from Enum
 
     # 3. Process Subject-Specific Query
     if category == "Subject-Specific":
@@ -114,8 +117,11 @@ Question: {modified_input}"""
             bot_response = llm.invoke(answer_prompt).content
         else:
             rel_tag_input = tagging_prompt.invoke({"input": modified_input})
-            rel_obj = smaller_llm.with_structured_output(RelatedNot).invoke(rel_tag_input)
-            relevance = rel_obj["description"]
+            rel_tag_response = smaller_llm.invoke(rel_tag_input).content
+            rel_text = rel_tag_response if isinstance(rel_tag_response, str) else str(rel_tag_response)
+
+            rel_obj = PydanticOutputParser(pydantic_object=RelatedNot).parse(rel_text)
+            relevance = rel_obj.description.value
 
             if relevance == "Not Animal Bite-Related":
                 bot_response = (
