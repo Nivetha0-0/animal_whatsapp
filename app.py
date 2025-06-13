@@ -62,7 +62,7 @@ class RelatedNot(BaseModel):
 def whatsapp():
     incoming_msg = request.values.get("Body", "").strip()
     user_number = request.values.get("From", "")
-
+    print(f"📩 Received message from {user_number}: {incoming_msg}")
     if user_number not in user_sessions:
         user_sessions[user_number] = []
     chat_history = user_sessions[user_number]
